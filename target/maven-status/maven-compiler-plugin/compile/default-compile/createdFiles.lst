@@ -1,0 +1,14 @@
+com/inshorts/kafka/data/SegmentGenericEventDto$NetworkDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$TraitsDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$AppDto.class
+com/inshorts/kafka/data/SegmentBatchGenericEventDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$OSDto.class
+com/inshorts/kafka/data/VideoDataSourceFlattennedDto.class
+com/inshorts/kafka/KafkaExtensionModule.class
+com/inshorts/kafka/data/SegmentGenericEventDto.class
+com/inshorts/kafka/indexer/NewBatchInputRowParser.class
+com/inshorts/kafka/data/SegmentGenericEventDto$ContextDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$DeviceDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$LibraryDto.class
+com/inshorts/kafka/data/SegmentGenericEventDto$ScreenDto.class
+com/inshorts/kafka/data/KafkaValueDeserializer.class
