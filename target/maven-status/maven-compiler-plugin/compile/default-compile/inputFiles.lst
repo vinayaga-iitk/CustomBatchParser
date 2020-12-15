@@ -1,6 +1,6 @@
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/data/KafkaValueDeserializer.java
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/data/SegmentGenericEventDto.java
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/indexer/NewBatchInputRowParser.java
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/data/VideoDataSourceFlattennedDto.java
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/KafkaExtensionModule.java
-/Users/vinaykumaragarwal/Documents/TestingProj/src/main/java/com/inshorts/kafka/data/SegmentBatchGenericEventDto.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/data/KafkaValueDeserializer.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/indexer/NewBatchInputRowParser.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/data/SegmentBatchGenericEventDto.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/KafkaExtensionModule.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/data/VideoDataSourceFlattennedDto.java
+/Users/vinaykumaragarwal/Documents/Inshorts/Public/Druid/CustomBatchParser/src/main/java/com/inshorts/kafka/data/SegmentGenericEventDto.java

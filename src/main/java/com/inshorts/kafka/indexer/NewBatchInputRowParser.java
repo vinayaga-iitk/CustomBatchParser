@@ -65,15 +65,25 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
 
         List<InputRow> finalEventList = new ArrayList<>();
         SegmentBatchGenericEventDto batchKafkaEvent = kafkaValueDeserializer.deserialize("", input.array());
+        String batchSerializedObj = gson.toJson(batchKafkaEvent);
+        Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+        logger.info(batchSerializedObj);
+//        System.out.println(batchKafkaEvent.getBatch().size());
         for (SegmentGenericEventDto segmentGenericEventDto : batchKafkaEvent.getBatch()) {
             try {
                 VideoDataSourceFlattennedDto druidNewsDataSourceEventDto = convertToFlattenDto(segmentGenericEventDto, new DateTime());
+                if (druidNewsDataSourceEventDto == null) {
+                    System.out.println("Found NULL");
+                    continue;
+                }
                 String serializedObj = gson.toJson(druidNewsDataSourceEventDto);
-                Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-                logger.info(serializedObj);
+//                Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+//                logger.info(serializedObj);
                 InputRow row = parse(serializedObj);
                 finalEventList.add(row);
+                System.out.println("Success");
             } catch (Exception e) {
+                System.out.println("Failure");
                 e.printStackTrace();
             }
         }
@@ -125,6 +135,9 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
     }
 
     private static VideoDataSourceFlattennedDto convertToFlattenDto(SegmentGenericEventDto eventDto, DateTime finalStartDateTime) throws ParseException {
+        if (eventDto.getEvent()==null){
+            return null;
+        }
         VideoDataSourceFlattennedDto druidNewsDataSourceEventDto = new VideoDataSourceFlattennedDto();
         if (org.apache.commons.lang3.StringUtils.isNotEmpty(eventDto.getTimestamp()) == true) {
             if (org.apache.commons.lang3.StringUtils.isNotEmpty(eventDto.getTimestamp().trim()) == true) {
@@ -278,6 +291,19 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
             }
         }
 
+        // Timespent condition filter
+        String event = eventDto.getEvent();
+        if (event.equals("CARD_VIEW")){
+            if (druidNewsDataSourceEventDto.getTimeSpent()>86400){
+                System.out.printf("Timespent for CARD_VIEW exceeding limit %d\n", druidNewsDataSourceEventDto.getTimeSpent());
+                return null;
+            }
+        }else{
+            if (druidNewsDataSourceEventDto.getTimeSpent()>3600){
+                System.out.printf("Timespent for %s exceeding limit %d\n",event, druidNewsDataSourceEventDto.getTimeSpent());
+                return null;
+            }
+        }
         //Event Fields
         switch (eventDto.getEvent()) {
             case "CARD_VIEW": {
@@ -299,6 +325,10 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
             }
             case "INITIAL_VIDEO_DELAY": {
                 druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("delay", "0")));
+                if (druidNewsDataSourceEventDto.getTimeSpent()>3600){
+                    System.out.printf("Timespent for INITIAL_VIDEO_DELAY exceeding limit %d\n", druidNewsDataSourceEventDto.getTimeSpent());
+                    return null;
+                }
                 break;
             }
             case "FULL_STORY_VIEW": {
