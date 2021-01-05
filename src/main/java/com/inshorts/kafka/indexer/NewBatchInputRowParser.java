@@ -18,8 +18,10 @@ import org.apache.druid.java.util.common.parsers.ParseException;
 import org.apache.druid.java.util.common.parsers.Parser;
 import org.joda.time.DateTime;
 import org.joda.time.Days;
+import org.joda.time.LocalDateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.FileWriter;
@@ -33,6 +35,7 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
     public static final String TYPE_NAME = "customParser";
     public static final String UNKNOWN_STRING = "Unknown";
     private static final DateTimeFormatter bucketFmtPrefix = DateTimeFormat.forPattern("yyyy-MM-dd");
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(NewBatchInputRowParser.class);
 
     private final ParseSpec parseSpec;
     private final MapInputRowParser mapParser;
@@ -65,10 +68,9 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
 
         List<InputRow> finalEventList = new ArrayList<>();
         SegmentBatchGenericEventDto batchKafkaEvent = kafkaValueDeserializer.deserialize("", input.array());
-        String batchSerializedObj = gson.toJson(batchKafkaEvent);
-        Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-        logger.info(batchSerializedObj);
-//        System.out.println(batchKafkaEvent.getBatch().size());
+//        String batchSerializedObj = gson.toJson(batchKafkaEvent);
+//        Logger logger = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+//        logger.info(batchSerializedObj);
         for (SegmentGenericEventDto segmentGenericEventDto : batchKafkaEvent.getBatch()) {
             try {
                 VideoDataSourceFlattennedDto druidNewsDataSourceEventDto = convertToFlattenDto(segmentGenericEventDto, new DateTime());
@@ -135,9 +137,11 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
     }
 
     private static VideoDataSourceFlattennedDto convertToFlattenDto(SegmentGenericEventDto eventDto, DateTime finalStartDateTime) throws ParseException {
-        if (eventDto.getEvent()==null){
+        if (eventDto.getEvent() == null) {
             return null;
         }
+        DateTime eventTimestamp = null;
+        DateTime currentTime = DateTime.now();
         VideoDataSourceFlattennedDto druidNewsDataSourceEventDto = new VideoDataSourceFlattennedDto();
         if (org.apache.commons.lang3.StringUtils.isNotEmpty(eventDto.getTimestamp()) == true) {
             if (org.apache.commons.lang3.StringUtils.isNotEmpty(eventDto.getTimestamp().trim()) == true) {
@@ -145,11 +149,13 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
                     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
                     DateTime eventDateTime = new DateTime(format.parse(eventDto.getTimestamp().trim()));
                     druidNewsDataSourceEventDto.setEventTimeStamp(eventDateTime.getMillis());
+                    eventTimestamp = eventDateTime;
                 } catch (Exception e) {
                     try {
                         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssssZ");
                         DateTime eventDateTime = new DateTime(format.parse(eventDto.getTimestamp().trim()));
                         druidNewsDataSourceEventDto.setEventTimeStamp(eventDateTime.getMillis());
+                        eventTimestamp = eventDateTime;
                     } catch (Exception ex) {
                         druidNewsDataSourceEventDto.setEventTimeStamp(finalStartDateTime.getMillis());
                     }
@@ -160,7 +166,11 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
         }
         druidNewsDataSourceEventDto.setEventName(eventDto.getEvent());
         druidNewsDataSourceEventDto.setEventSource("SEGMENT-V2");
-        druidNewsDataSourceEventDto.setTimestamp(eventDto.getTimestamp());
+        if (eventTimestamp != null && (eventTimestamp.compareTo(currentTime.plusDays(2)) < 0 && eventTimestamp.compareTo(currentTime.plusDays(-7)) > 0)) {
+            druidNewsDataSourceEventDto.setTimestamp(eventDto.getTimestamp());
+        } else {
+            return null;
+        }
 
         if (eventDto.getContext() != null) {
             druidNewsDataSourceEventDto.setDeviceCountry(eventDto.getContext().getLocale());
@@ -293,16 +303,38 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
 
         // Timespent condition filter
         String event = eventDto.getEvent();
-        if (event.equals("CARD_VIEW")){
-            if (druidNewsDataSourceEventDto.getTimeSpent()>86400){
+        if (event.equals("CARD_VIEW")) {
+            if (druidNewsDataSourceEventDto.getTimeSpent() > 86400) {
                 System.out.printf("Timespent for CARD_VIEW exceeding limit %d\n", druidNewsDataSourceEventDto.getTimeSpent());
                 return null;
             }
-        }else{
-            if (druidNewsDataSourceEventDto.getTimeSpent()>3600){
-                System.out.printf("Timespent for %s exceeding limit %d\n",event, druidNewsDataSourceEventDto.getTimeSpent());
+        } else {
+            if (druidNewsDataSourceEventDto.getTimeSpent() > 3600) {
+                System.out.printf("Timespent for %s exceeding limit %d\n", event, druidNewsDataSourceEventDto.getTimeSpent());
                 return null;
             }
+        }
+        int position = Double.valueOf(String.valueOf(properties.getOrDefault("position", "-1"))).intValue();
+        if(IsCustomCardEvent(event)){
+            if (properties.containsKey("ad_unit")) {
+                druidNewsDataSourceEventDto.setCardId((String.valueOf(properties.get("ad_unit"))));
+            } else if (properties.containsKey("c_id")) {
+                druidNewsDataSourceEventDto.setCardId((String.valueOf(properties.getOrDefault("c_id", UNKNOWN_STRING))));
+            } else if (properties.containsKey("id")) {
+                druidNewsDataSourceEventDto.setCardId((String.valueOf(properties.getOrDefault("id", UNKNOWN_STRING))));
+            } else if (properties.containsKey("card_id")) {
+                String cId = String.valueOf(properties.get("card_id"));
+                if (!cId.startsWith("cc_")) {
+                    cId = "cc_" + cId;
+                }
+                druidNewsDataSourceEventDto.setCardId(cId);
+            } else {
+                druidNewsDataSourceEventDto.setCardId(UNKNOWN_STRING);
+            }
+            int positionFromCardId = splitCardIdAndGetPosition(druidNewsDataSourceEventDto);
+            druidNewsDataSourceEventDto.setVerticalPosition(positionFromCardId);
+            druidNewsDataSourceEventDto.setCcType(CCType.CUSTOM_CARD.name());
+            druidNewsDataSourceEventDto.setAdCampaignName(String.valueOf(properties.getOrDefault("campaign", UNKNOWN_STRING)));
         }
         //Event Fields
         switch (eventDto.getEvent()) {
@@ -325,7 +357,7 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
             }
             case "INITIAL_VIDEO_DELAY": {
                 druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("delay", "0")));
-                if (druidNewsDataSourceEventDto.getTimeSpent()>3600){
+                if (druidNewsDataSourceEventDto.getTimeSpent() > 3600) {
                     System.out.printf("Timespent for INITIAL_VIDEO_DELAY exceeding limit %d\n", druidNewsDataSourceEventDto.getTimeSpent());
                     return null;
                 }
@@ -405,15 +437,12 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
                 druidNewsDataSourceEventDto.setCardId((String) properties.getOrDefault("card_id", UNKNOWN_STRING));
                 break;
             }
-            case "ME_TAB_VIEW": {
-                druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
-                break;
-            }
-            case "LOGIN_SCREEN_VIEW": {
-                druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
-                break;
-            }
-            case "SETTINGS_TAB_VIEW": {
+            case "ME_TAB_VIEW":
+            case "LOGIN_SCREEN_VIEW":
+            case "SETTINGS_TAB_VIEW":
+            case "LOCATION_PERMISSION_VIEW":
+            case "LOCATION_SELECTION_VIEW":
+            case "LOCATION_CONFIRMATION_VIEW": {
                 druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
                 break;
             }
@@ -422,14 +451,8 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
                 druidNewsDataSourceEventDto.setAppOpen(1);
                 break;
             }
-            case "APP_RESUME": {
-                druidNewsDataSourceEventDto.setActivityName((String) properties.getOrDefault("activity_tag", ""));
-                break;
-            }
-            case "APP_PAUSE": {
-                druidNewsDataSourceEventDto.setActivityName((String) properties.getOrDefault("activity_tag", ""));
-                break;
-            }
+            case "APP_RESUME":
+            case "APP_PAUSE":
             case "APP_CLOSE": {
                 druidNewsDataSourceEventDto.setActivityName((String) properties.getOrDefault("activity_tag", ""));
                 break;
@@ -481,12 +504,12 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
                 }
                 break;
             }
-            case "LOGIN_SUCCESS": {
+            case "LOGIN_SUCCESS":
+            case "SCREENSHOT_CAPTURED":
+            case "PHONE_NUMBER_VERIFICATION_DISABLED":
+            case "LOCATION_UPDATED": {
                 break;
 
-            }
-            case "SCREENSHOT_CAPTURED": {
-                break;
             }
             case "PHONE_NUMBER_VERIFICATION_SUCCESS": {
                 druidNewsDataSourceEventDto.setVerifier((String) properties.getOrDefault("verifier", ""));
@@ -495,24 +518,6 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
             case "PHONE_NUMBER_VERIFICATION_FAILED": {
                 druidNewsDataSourceEventDto.setVerifier((String) properties.getOrDefault("verifier", ""));
                 druidNewsDataSourceEventDto.setError((String) properties.getOrDefault("error", ""));
-                break;
-            }
-            case "PHONE_NUMBER_VERIFICATION_DISABLED": {
-                break;
-            }
-            case "LOCATION_PERMISSION_VIEW": {
-                druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
-                break;
-            }
-            case "LOCATION_SELECTION_VIEW": {
-                druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
-                break;
-            }
-            case "LOCATION_CONFIRMATION_VIEW": {
-                druidNewsDataSourceEventDto.setTimeSpent(Long.valueOf((String) properties.getOrDefault("timespent", "0")));
-                break;
-            }
-            case "LOCATION_UPDATED": {
                 break;
             }
             case "LOCATION_CLICKED": {
@@ -559,9 +564,163 @@ public class NewBatchInputRowParser implements ByteBufferInputRowParser {
                 }
                 break;
             }
+
+            case "FULL_PAGE_AD_CLICK": {
+                druidNewsDataSourceEventDto.setCcType(CCType.FULL_PAGE.name());
+                druidNewsDataSourceEventDto.setCardView(0);
+                druidNewsDataSourceEventDto.setCardClick(1);
+                druidNewsDataSourceEventDto.setVerticalPosition(position);
+                druidNewsDataSourceEventDto.setHorizontalPosition(-1);
+                break;
+            }
+            case "FULL_PAGE_AD_VIEW": {
+                druidNewsDataSourceEventDto.setCcType(CCType.FULL_PAGE.name());
+                druidNewsDataSourceEventDto.setCardView(1);
+                druidNewsDataSourceEventDto.setCardClick(0);
+                druidNewsDataSourceEventDto.setVerticalPosition(position);
+                druidNewsDataSourceEventDto.setHorizontalPosition(-1);
+                break;
+            }
+            case "BOTTOM_BAR_AD_CLICK": {
+                druidNewsDataSourceEventDto.setCcType(CCType.BOTTOM.name());
+                druidNewsDataSourceEventDto.setCardView(0);
+                druidNewsDataSourceEventDto.setCardClick(1);
+                druidNewsDataSourceEventDto.setVerticalPosition(position);
+                druidNewsDataSourceEventDto.setHorizontalPosition(-1);
+                break;
+            }
+            case "BOTTOM_BAR_AD_SHOWN": {
+                druidNewsDataSourceEventDto.setCcType(CCType.BOTTOM.name());
+                druidNewsDataSourceEventDto.setCardView(1);
+                druidNewsDataSourceEventDto.setCardClick(0);
+                druidNewsDataSourceEventDto.setVerticalPosition(position);
+                druidNewsDataSourceEventDto.setHorizontalPosition(-1);
+                break;
+            }
+
+            case "ad_click":
+            case "brand_ad_click": {
+                druidNewsDataSourceEventDto.setCardClick(1);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+                break;
+            }
+            case "ad_video_play":
+            case "brand_video_ad_click": {
+                druidNewsDataSourceEventDto.setCardVideoClick(1);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+                break;
+            }
+
+            /**
+             * Slider events are received from website, vertical position is always 0. Position received in these
+             * case is the horizontal position. Vertical Position is set as default : -1
+             */
+
+            case "Slider Swipe Left": {
+                druidNewsDataSourceEventDto.setCardId(getCardIdFromPropertiesAfterSplit(druidNewsDataSourceEventDto.getCardId()));
+                druidNewsDataSourceEventDto.setSwipeLeft(1);
+//                druidNewsDataSourceEventDto.getTotalUniqueSwipeLeft().add(deviceId);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+                break;
+            }
+            case "Slider Swipe Right": {
+                druidNewsDataSourceEventDto.setCardId(getCardIdFromPropertiesAfterSplit(druidNewsDataSourceEventDto.getCardId()));
+                druidNewsDataSourceEventDto.setSwipeRight(1);
+//                druidNewsDataSourceEventDto.getTotalUniqueSwipeRight().add(deviceId);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+                break;
+            }
+            case "Slider Card View": {
+                druidNewsDataSourceEventDto.setCardId(getCardIdFromPropertiesAfterSplit(druidNewsDataSourceEventDto.getCardId()));
+                druidNewsDataSourceEventDto.setCardView(1);
+//                druidNewsDataSourceEventDto.getTotalUniqueViews().add(deviceId);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+
+                if (properties.containsKey("timeSpent")) {
+                    Double timeSpentCard = 0.0;
+                    String timeSpent = String.valueOf(properties.get("timeSpent"));
+                    if (timeSpent.contains(",")) {
+                        timeSpent = timeSpent.replace(",", ".");
+                    }
+                    if (timeSpent.matches("^([0-9]+)?(\\.[0-9]+)?$")) {
+                        timeSpentCard = Double.valueOf(timeSpent);
+                    } else {
+                        timeSpentCard = 0.0;
+                    }
+                    Double checkTime = 1200000.0;
+                    if (timeSpentCard > checkTime)
+                        timeSpentCard = checkTime;
+                    if (timeSpentCard < 0)
+                        timeSpentCard = 0.0;
+                    druidNewsDataSourceEventDto.setCardTimeSpent(timeSpentCard * 1.0 / 1000);
+                }
+                break;
+            }
+            case "Slider Ad Click": {
+                druidNewsDataSourceEventDto.setCardId(getCardIdFromPropertiesAfterSplit(druidNewsDataSourceEventDto.getCardId()));
+                druidNewsDataSourceEventDto.setCardClick(1);
+//                druidNewsDataSourceEventDto.getTotalUniqueClicks().add(deviceId);
+                druidNewsDataSourceEventDto.setHorizontalPosition(position);
+                break;
+            }
+
+
         }
 
         return druidNewsDataSourceEventDto;
+    }
+
+    public enum CCType {
+        BOTTOM,
+        FULL_PAGE,
+        CUSTOM_CARD
+    }
+
+    private static String getCardIdFromPropertiesAfterSplit(String cId) {
+        if (StringUtils.isNotEmpty(cId)) {
+            String[] split = cId.split("_");
+            if (split.length >= 2) {
+                return split[0] + "_" + split[1];
+            }
+
+        }
+        return cId;
+    }
+
+    private static Boolean IsCustomCardEvent(String event){
+        return StringUtils.equalsIgnoreCase(event, "CARD_VIEW")
+                || StringUtils.equalsIgnoreCase(event, "ad_click")
+                || StringUtils.equalsIgnoreCase(event, "brand_ad_click")
+                || StringUtils.equalsIgnoreCase(event, "ad_video_play")
+                || StringUtils.equalsIgnoreCase(event, "brand_video_ad_click")
+                || StringUtils.equalsIgnoreCase(event, "Slider Swipe Left")
+                || StringUtils.equalsIgnoreCase(event, "Slider Swipe Right")
+                || StringUtils.equalsIgnoreCase(event, "Slider Card View")
+                || StringUtils.equalsIgnoreCase(event, "Slider Ad Click")
+                || StringUtils.equalsIgnoreCase(event, "FULL_PAGE_AD_CLICK")
+                || StringUtils.equalsIgnoreCase(event, "FULL_PAGE_AD_VIEW")
+                || StringUtils.equalsIgnoreCase(event, "BOTTOM_BAR_AD_CLICK")
+                || StringUtils.equalsIgnoreCase(event, "BOTTOM_BAR_AD_SHOWN")
+                ;
+    }
+
+    private static Integer splitCardIdAndGetPosition(VideoDataSourceFlattennedDto videoCustomCardEventDto) {
+        String cId = videoCustomCardEventDto.getCardId();
+        String positionPrefix = "po";
+        Integer position = 10000;
+
+        String[] splits = cId.split("_");
+        for (String split : splits) {
+            if (split.startsWith(positionPrefix) && !positionPrefix.equalsIgnoreCase(split)) {
+                try {
+                    position = Integer.valueOf(split.substring(2));
+                } catch (NumberFormatException e) {
+                    LOG.error("Error in parsing position string", e);
+                }
+            }
+        }
+
+        return position;
     }
 
     @Override

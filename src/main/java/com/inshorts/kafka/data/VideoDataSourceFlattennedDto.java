@@ -161,6 +161,11 @@ public class VideoDataSourceFlattennedDto implements Serializable {
     private String action;
 
     private String type;
+
+    // Custom Card Events
+    private Integer verticalPosition;
+    private Integer horizontalPosition;
+    private String ccType;
     private String adCampaignName;
     private Integer cardClick = 0;
     private Double cardTimeSpent = 0.0;
@@ -169,6 +174,8 @@ public class VideoDataSourceFlattennedDto implements Serializable {
     private Integer cardOpenUrl = 0;
     private Integer cardMarkedForDeletion = 0;
     private Boolean valid;
+    private Integer swipeLeft = 0;
+    private Integer swipeRight = 0;
 
     private String tag;
     private String selectedOption;

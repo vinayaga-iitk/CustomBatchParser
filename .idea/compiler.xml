@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CompilerConfiguration">
+    <option name="BUILD_PROCESS_ADDITIONAL_VM_OPTIONS" value="-Djps.track.ap.dependencies=false" />
     <annotationProcessing>
       <profile default="true" name="Default" enabled="true" />
       <profile name="Annotation profile for custom-parser" enabled="true">
@@ -10,6 +11,7 @@
         <processorPath useClasspath="false">
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.16.12/lombok-1.16.12.jar" />
         </processorPath>
+        <module name="custom-parser" />
         <module name="CustomBatchParser" />
       </profile>
     </annotationProcessing>
@@ -17,6 +19,7 @@
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="CustomBatchParser" options="-Xlint:unchecked" />
+      <module name="custom-parser" options="-Xlint:unchecked" />
     </option>
   </component>
 </project>
